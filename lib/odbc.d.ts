@@ -1,4 +1,5 @@
 declare namespace odbc {
+  type QueryParameter = number | string | boolean;
 
   class ColumnDefinition {
     name: string;
@@ -12,7 +13,7 @@ declare namespace odbc {
     count: number;
     columns: Array<ColumnDefinition>;
     statement: string;
-    parameters: Array<number|string>;
+    parameters: QueryParameter[];
     return: number;
   }
 
@@ -34,7 +35,7 @@ declare namespace odbc {
 
     prepare(sql:string, callback: (error: NodeOdbcError) => undefined): undefined;
 
-    bind(parameters: Array<number|string>, callback: (error: NodeOdbcError) => undefined): undefined;
+    bind(parameters: QueryParameter[], callback: (error: NodeOdbcError) => undefined): undefined;
 
     execute<T>(callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
 
@@ -45,11 +46,11 @@ declare namespace odbc {
     ////////////////////////////////////////////////////////////////////////////
 
     prepare(sql:string): Promise<void>;
-  
-    bind(parameters: Array<number|string>): Promise<void>;
-  
+
+    bind(parameters: QueryParameter[]): Promise<void>;
+
     execute<T>(): Promise<Result<T>>;
-  
+
     close(): Promise<void>;
   }
 
@@ -72,7 +73,7 @@ declare namespace odbc {
     cursor?: boolean|string;
     fetchSize?: number;
     timeout?: number;
-    initialBufferSize?: number; 
+    initialBufferSize?: number;
   }
 
   class Connection {
@@ -81,12 +82,12 @@ declare namespace odbc {
     //   Callbacks   ///////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////
     query<T>(sql: string, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
-    query<T>(sql: string, parameters: Array<number|string>, options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
+    query<T>(sql: string, parameters: QueryParameter[], options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
     query<T>(sql: string, options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
-    query<T>(sql: string, parameters: Array<number|string>, options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
+    query<T>(sql: string, parameters: QueryParameter[], options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
 
     callProcedure(catalog: string, schema: string, name: string, callback: (error: NodeOdbcError, result: Result<unknown>) => undefined): undefined;
-    callProcedure(catalog: string, schema: string, name: string, parameters: Array<number|string>, callback: (error: NodeOdbcError, result: Result<unknown>) => undefined): undefined;
+    callProcedure(catalog: string, schema: string, name: string, parameters: QueryParameter[], callback: (error: NodeOdbcError, result: Result<unknown>) => undefined): undefined;
 
     createStatement(callback: (error: NodeOdbcError, statement: Statement) => undefined): undefined;
 
@@ -108,11 +109,11 @@ declare namespace odbc {
     //   Promises   ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////
     query<T>(sql: string): Promise<Result<T>>;
-    query<T>(sql: string, parameters: Array<number|string>): Promise<Result<T>>;
+    query<T>(sql: string, parameters: QueryParameter[]): Promise<Result<T>>;
     query<T>(sql: string, options: QueryOptions): Promise<Result<T>>;
-    query<T>(sql: string, parameters: Array<number|string>, options: QueryOptions): Promise<Result<T>>;
+    query<T>(sql: string, parameters: QueryParameter[], options: QueryOptions): Promise<Result<T>>;
 
-    callProcedure(catalog: string, schema: string, name: string, parameters?: Array<number|string>): Promise<Result<unknown>>;
+    callProcedure(catalog: string, schema: string, name: string, parameters?: QueryParameter[]): Promise<Result<unknown>>;
 
     createStatement(): Promise<Statement>;
 
@@ -139,9 +140,9 @@ declare namespace odbc {
     connect(callback: (error: NodeOdbcError, connection: Connection) => undefined): undefined;
 
     query<T>(sql: string, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
-    query<T>(sql: string, parameters: Array<number|string>, options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
+    query<T>(sql: string, parameters: QueryParameter[], options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
     query<T>(sql: string, options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
-    query<T>(sql: string, parameters: Array<number|string>, options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
+    query<T>(sql: string, parameters: QueryParameter[], options: QueryOptions, callback: (error: NodeOdbcError, result: Result<T>) => undefined): undefined;
 
     close(callback: (error: NodeOdbcError) => undefined): undefined;
 
@@ -152,9 +153,9 @@ declare namespace odbc {
     connect(): Promise<Connection>;
 
     query<T>(sql: string): Promise<Result<T>>;
-    query<T>(sql: string, parameters: Array<number|string>): Promise<Result<T>>;
+    query<T>(sql: string, parameters: QueryParameter[]): Promise<Result<T>>;
     query<T>(sql: string, options: QueryOptions): Promise<Result<T>>;
-    query<T>(sql: string, parameters: Array<number|string>, options: QueryOptions): Promise<Result<T>>;
+    query<T>(sql: string, parameters: QueryParameter[], options: QueryOptions): Promise<Result<T>>;
 
     close(): Promise<void>;
   }
