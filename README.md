@@ -27,8 +27,8 @@ This package is a native addon, built with C++ code using `node-addon-api`, a C+
 
 * Node.js 12
 * Node.js 14
-* Node.js 15
 * Node.js 16
+* Node.js 18
 
 ---
 
@@ -47,7 +47,7 @@ Three main steps must be done before `node-odbc` can interact with your database
 
 * **Install ODBC drivers for target database:** Most database management system providers offer ODBC drivers for their product. See the website of your DBMS for more information.
 
-* **odbc.ini and odbcinst.ini**: These files define your DSNs (data source names) and ODBC drivers, respectively. They must be set up for ODBC functions to correctly interact with your database. 
+* **odbc.ini and odbcinst.ini**: These files define your DSNs (data source names) and ODBC drivers, respectively. They must be set up for ODBC functions to correctly interact with your database.
 
 When all these steps have been completed, install `node-odbc` into your Node.js project by using:
 
@@ -123,7 +123,7 @@ Instead, tracing should be enabled through your driver manager, and that informa
     * [.close()](#closecallback-2)
 * [Cursor](#Cursor)
     * [.fetch()](#fetchcallback)
-    * [.noData()](#nodata)
+    * [.noData](#nodata)
     * [.close()](#closecallback-3)
 
 ### **Callbacks _or_ Promises**
@@ -142,7 +142,7 @@ The result array also contains several properties:
   * `name`: The name of the column
   * `dataType`: The data type of the column properties
 * `statement`: The statement used to return the result set
-* `parameters`: The parameters passed to the statement or procedure. For input/output and output parameters, this value will reflect the value updated from a procedure. 
+* `parameters`: The parameters passed to the statement or procedure. For input/output and output parameters, this value will reflect the value updated from a procedure.
 * `return`: The return value from some procedures. For many DBMS, this will always be undefined.
 
 ```
@@ -692,10 +692,11 @@ Note that `odbc.pool` will return from callback or Promise as soon as it has cre
 * **connectionString**: The connection string to connect to the database for all connections in the pool, usually by naming a DSN. Can also be a configuration object with the following properties:
     * `connectionString` **REQUIRED**: The connection string to connect to the database
     * `connectionTimeout`: The number of seconds to wait for a request on the connection to complete before returning to the application
-    * `loginTimeout`:The number of seconds to wait for a login request to complete before returning to the application
+    * `loginTimeout`: The number of seconds to wait for a login request to complete before returning to the application
     * `initialSize`: The initial number of Connections created in the Pool
     * `incrementSize`: How many additional Connections to create when all of the Pool's connections are taken
     * `maxSize`: The maximum number of open Connections the Pool will create
+    * `reuseConnections`: Whether or not to reuse an existing Connection instead of creating a new one
     * `shrink`: Whether or not the number of Connections should shrink to `initialSize` as they free up
 * **callback?**: The function called when `.connect` has finished connecting. If no callback function is given, `.connect` will return a native JavaScript `Promise`. Callback signature is:
     * error: The error that occured in execution, or `null` if no error
@@ -962,11 +963,16 @@ odbc.connect(`${process.env.CONNECTION_STRING}`, (error, connection) => {
 
 ---
 
-### `.execute(callback?)`
+### `.execute(options?, callback?)`
 
 Executes the prepared and optionally bound SQL statement.
 
 #### Parameters:
+* **options?**: An object containing options that affect execution behavior. Valid properties include:
+    * `cursor`: A boolean value indicating whether or not to return a cursor instead of results immediately. Can also be a string naming the cursor, which will assume that a cursor will be returned. Closing the `Statement` will also close the `Cursor`, but closing the `Cursor` will keep the `Statement` valid.
+    * `fetchSize`: Used with a cursor, sets the number of rows that are returned on a call to `fetch` on the Cursor.
+    * `timeout`: The amount of time (in seconds) that the query will attempt to execute before returning to the application.
+    * `initialBufferSize`: Sets the initial buffer size (in bytes) for storing data from SQL_LONG* data fields. Useful for avoiding resizes if buffer size is known before the call.
 * **callback?**: The function called when `.execute` has finished execution. If no callback function is given, `.execute` will return a native JavaScript `Promise`. Callback signature is:
     * error: The error that occured in execution, or `null` if no error
     * result: The [result array](#result-array) returned from the executed statement
@@ -987,7 +993,7 @@ async function executeExample() {
     await statement.bind([1, 'Name']);
     const result = await statement.execute();
     console.log(result);
-    
+
 }
 
 executeExample();
@@ -1136,9 +1142,9 @@ odbc.connect(`${process.env.CONNECTION_STRING}`, (error, connection) => {
 
 ---
 
-### `.noData()`
+### `.noData`
 
-Returns whether the cursor is has reached the end of the result set. Fetch must be called at least once before noData can return `true`. Used for determining if there are no more results to retrieve from the cursor.
+Returns whether the cursor has reached the end of the result set. Fetch must be called at least once before noData can return `true`. Used for determining if there are no more results to retrieve from the cursor.
 
 #### Parameters:
 None
@@ -1154,8 +1160,8 @@ const odbc = require('odbc');
 async function cursorExample() {
     const connection = await odbc.connect(`${process.env.CONNECTION_STRING}`);
     const cursor = await connection.query('SELECT * FROM MY_TABLE', { cursor: true, fetchSize: 3 });
-    // As long as noData() returns false, keep calling fetch
-    while (!cursor.noData())
+    // As long as noData is false, keep calling fetch
+    while (!cursor.noData)
     {
         const result = await cursor.fetch();
         // Now have a results array of size 3 (or less) that we can use
@@ -1177,7 +1183,7 @@ odbc.connect(`${process.env.CONNECTION_STRING}`, (error, connection) => {
         cursor.fetch((error2, results) => {
             if (error2) { return; } // handle
             // Now have a results array of size 3 (or less) that we can use
-            if (!cursor.noData()) {
+            if (!cursor.noData) {
                 // Still more data to retrieve!
             } else {
                 cursor.close((error3) => {

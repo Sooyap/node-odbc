@@ -26,6 +26,7 @@
 // object keys for the result object
 const char* NAME           = "name";
 const char* DATA_TYPE      = "dataType";
+const char* DATA_TYPE_NAME = "dataTypeName";
 const char* COLUMN_SIZE    = "columnSize";
 const char* DECIMAL_DIGITS = "decimalDigits";
 const char* NULLABLE       = "nullable";
@@ -51,6 +52,8 @@ Napi::Object ODBCConnection::Init(Napi::Env env, Napi::Object exports) {
     InstanceMethod("rollback", &ODBCConnection::Rollback),
     InstanceMethod("callProcedure", &ODBCConnection::CallProcedure),
     InstanceMethod("getUsername", &ODBCConnection::GetUsername),
+    InstanceMethod("primaryKeys", &ODBCConnection::PrimaryKeys),
+    InstanceMethod("foreignKeys", &ODBCConnection::ForeignKeys),
     InstanceMethod("tables", &ODBCConnection::Tables),
     InstanceMethod("columns", &ODBCConnection::Columns),
     InstanceMethod("setIsolationLevel", &ODBCConnection::SetIsolationLevel),
@@ -366,22 +369,6 @@ class CreateStatementAsyncWorker : public ODBCAsyncWorker {
       if (!SQL_SUCCEEDED(return_code)) {
         this->errors = GetODBCErrors(SQL_HANDLE_STMT, hstmt);
         SetError("[odbc] Error allocating a handle to create a new Statement\0");
-        return;
-      }
-
-      // set SQL_ATTR_CURSOR_TYPE
-      return_code =
-      SQLSetStmtAttr
-      (
-        hstmt,
-        SQL_ATTR_CURSOR_TYPE,
-        (SQLPOINTER) SQL_CURSOR_STATIC,
-        IGNORED_PARAMETER
-      );
-
-      if (!SQL_SUCCEEDED(return_code)) {
-        this->errors = GetODBCErrors(SQL_HANDLE_STMT, hstmt);
-        SetError("[odbc] Error setting cursor type on statement.\0");
         return;
       }
     }
@@ -755,15 +742,6 @@ class QueryAsyncWorker : public ODBCAsyncWorker {
           SetError("[odbc] Error allocating a handle to run the SQL statement\0");
           return;
         }
-
-        // set SQL_ATTR_CURSOR_TYPE
-        SQLSetStmtAttr
-        (
-          data->hstmt,
-          SQL_ATTR_CURSOR_TYPE,
-          (SQLPOINTER) SQL_CURSOR_STATIC,
-          IGNORED_PARAMETER
-        );
 
         // set SQL_ATTR_QUERY_TIMEOUT
         if (data->query_options.timeout > 0) {
@@ -1455,7 +1433,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
         //        value on the out portion, but keep it bound to SQL_C_CHAR.
         
         // declare buffersize, used for many of the code paths below
-        SQLSMALLINT bufferSize = 0;
+        SQLLEN bufferSize = 0;
         switch (parameter->InputOutputType) {
           case SQL_PARAM_INPUT_OUTPUT:
           {
@@ -1475,6 +1453,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = 21;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1491,6 +1470,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = parameter->ColumnSize * sizeof(SQLCHAR);
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1511,6 +1491,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = 12;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1531,6 +1512,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = 7;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1566,9 +1548,10 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                   case SQL_C_CHAR:
                   default: {
                     // ColumnSize + sign + decimal + null-terminator
-                    bufferSize = (SQLSMALLINT)(data->parameters[i]->ColumnSize + 3);
+                    bufferSize = (data->parameters[i]->ColumnSize + 3);
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1587,6 +1570,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = 2;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1612,6 +1596,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = 15;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1637,6 +1622,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = 25;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1662,6 +1648,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = 25;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1676,18 +1663,20 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                 switch(parameter->ValueType)
                 {
                   case SQL_C_WCHAR: {
-                    bufferSize = (SQLSMALLINT)(data->parameters[i]->ColumnSize + 1);
+                    bufferSize = data->parameters[i]->ColumnSize + 1;
                     SQLWCHAR *temp = new SQLWCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLWCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize * sizeof(SQLWCHAR);
                     break;
                   }
                   case SQL_C_CHAR:
                   default: {
-                    bufferSize = (SQLSMALLINT)(data->parameters[i]->ColumnSize + 1) * sizeof(SQLCHAR) * MAX_UTF8_BYTES;
+                    bufferSize = (data->parameters[i]->ColumnSize + 1) * sizeof(SQLCHAR) * MAX_UTF8_BYTES;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1703,9 +1692,10 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                 {
                   case SQL_C_CHAR:
                   default: {
-                    bufferSize = (SQLSMALLINT)(data->parameters[i]->ColumnSize + 1) * sizeof(SQLCHAR) * MAX_UTF8_BYTES;
+                    bufferSize = (data->parameters[i]->ColumnSize + 1) * sizeof(SQLCHAR) * MAX_UTF8_BYTES;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1724,15 +1714,17 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
                     bufferSize = parameter->ColumnSize * sizeof(SQLCHAR);
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
                   }
                   case SQL_C_CHAR:
                   default: {
-                    bufferSize = (SQLSMALLINT)(data->parameters[i]->ColumnSize + 1) * sizeof(SQLCHAR) * MAX_UTF8_BYTES;
+                    bufferSize = (data->parameters[i]->ColumnSize + 1) * sizeof(SQLCHAR) * MAX_UTF8_BYTES;
                     SQLCHAR *temp = new SQLCHAR[bufferSize]();
                     memcpy(temp, parameter->ParameterValuePtr, parameter->BufferLength);
+                    delete[] reinterpret_cast<SQLCHAR*>(parameter->ParameterValuePtr);
                     parameter->ParameterValuePtr = temp;
                     parameter->BufferLength = bufferSize;
                     break;
@@ -1795,7 +1787,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
               case SQL_BINARY:
               case SQL_VARBINARY:
               case SQL_LONGVARBINARY:
-                bufferSize = (SQLSMALLINT)(data->parameters[i]->ColumnSize) * sizeof(SQLCHAR);
+                bufferSize = data->parameters[i]->ColumnSize * sizeof(SQLCHAR);
                 data->parameters[i]->ValueType = SQL_C_BINARY;
                 data->parameters[i]->ParameterValuePtr = new SQLCHAR[bufferSize]();
                 data->parameters[i]->BufferLength = bufferSize;
@@ -1804,7 +1796,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
               case SQL_WCHAR:
               case SQL_WVARCHAR:
               case SQL_WLONGVARCHAR:
-                bufferSize = (SQLSMALLINT)(data->parameters[i]->ColumnSize + 1) * sizeof(SQLWCHAR);
+                bufferSize = (data->parameters[i]->ColumnSize + 1) * sizeof(SQLWCHAR);
                 data->parameters[i]->ValueType = SQL_C_WCHAR;
                 data->parameters[i]->ParameterValuePtr = new SQLWCHAR[bufferSize]();
                 data->parameters[i]->BufferLength = bufferSize;
@@ -1814,7 +1806,7 @@ class CallProcedureAsyncWorker : public ODBCAsyncWorker {
               case SQL_VARCHAR:
               case SQL_LONGVARCHAR:
               default:
-                bufferSize = (SQLSMALLINT)((data->parameters[i]->ColumnSize * MAX_UTF8_BYTES) + 1) * sizeof(SQLCHAR);
+                bufferSize = ((data->parameters[i]->ColumnSize * MAX_UTF8_BYTES) + 1) * sizeof(SQLCHAR);
                 data->parameters[i]->ValueType = SQL_C_CHAR;
                 data->parameters[i]->ParameterValuePtr = new SQLCHAR[bufferSize]();
                 data->parameters[i]->BufferLength = bufferSize;
@@ -2091,6 +2083,415 @@ Napi::Value ODBCConnection::GetInfo(const Napi::Env env, const SQLUSMALLINT opti
   return env.Null();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//
+//  PrimaryKeys
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// PrimaryKeysAsyncWorker, used by the PrimaryKeys function below
+class PrimaryKeysAsyncWorker : public ODBCAsyncWorker
+{
+    private:
+
+    ODBCConnection *odbcConnectionObject;
+    StatementData  *data;
+
+    void Execute() {
+
+      SQLRETURN return_code;
+
+      uv_mutex_lock(&ODBC::g_odbcMutex);
+      return_code = SQLAllocHandle(
+        SQL_HANDLE_STMT,            // HandleType
+        odbcConnectionObject->hDBC, // InputHandle
+        &data->hstmt                // OutputHandlePtr
+      );
+      uv_mutex_unlock(&ODBC::g_odbcMutex);
+      if (!SQL_SUCCEEDED(return_code)) {
+        this->errors = GetODBCErrors(SQL_HANDLE_DBC, odbcConnectionObject->hDBC);
+        SetError("[odbc] Error allocating a statement handle to get primary key information\0");
+        return;
+      }
+
+      return_code =
+      set_fetch_size
+      (
+        data,
+        1
+      );
+
+      return_code =
+      SQLPrimaryKeys
+      (
+        data->hstmt,     // StatementHandle
+        data->catalog,   // CatalogName
+        SQL_NTS,         // NameLength1
+        data->schema,    // SchemaName
+        SQL_NTS,         // NameLength2
+        data->table,     // TableName
+        SQL_NTS          // NameLength3 
+      );
+      if (!SQL_SUCCEEDED(return_code)) {
+        this->errors = GetODBCErrors(SQL_HANDLE_STMT, data->hstmt);
+        SetError("[odbc] Error getting table information\0");
+        return;
+      }
+
+      return_code = prepare_for_fetch(data);
+      bool alloc_error = false;
+      return_code =
+      fetch_all_and_store
+      (
+        data,
+        false,
+        &alloc_error
+      );
+      if (alloc_error)
+      {
+        SetError("[odbc] Error allocating or reallocating memory when fetching data. No ODBC error information available.\0");
+        return;
+      }
+      if (!SQL_SUCCEEDED(return_code)) {
+        this->errors = GetODBCErrors(SQL_HANDLE_STMT, data->hstmt);
+        SetError("[odbc] Error retrieving table information results set\0");
+        return;
+      }
+    }
+
+    void OnOK() {
+
+      Napi::Env env = Env();
+      Napi::HandleScope scope(env);
+
+      std::vector<napi_value> callbackArguments;
+
+      callbackArguments.push_back(env.Null());
+
+      Napi::Array empty = Napi::Array::New(env);
+      Napi::Array rows = process_data_for_napi(env, data, empty);
+      callbackArguments.push_back(rows);
+
+      Callback().Call(callbackArguments);
+    }
+
+  public:
+
+    PrimaryKeysAsyncWorker(ODBCConnection *odbcConnectionObject, StatementData *data, Napi::Function& callback) : ODBCAsyncWorker(callback),
+      odbcConnectionObject(odbcConnectionObject),
+      data(data) {}
+
+    ~PrimaryKeysAsyncWorker() {
+      delete data;
+      data = NULL;
+    }
+};
+
+//
+//  ODBCConnection::PrimaryKeys
+//
+//    Description: Returns the columns names that make up the primary key for a
+//                 table.
+//
+//    Parameters:
+//      const Napi::CallbackInfo& info:
+//        The information passed from the JavaSript environment, including the
+//        function arguments for 'tables'.
+//
+//        info[0]: String: catalog
+//        info[1]: String: schema
+//        info[2]: String: table
+//        info[3]: Function: callback function:
+//            function(error, result)
+//              error: An error object if there was a database issue
+//              result: The ODBCResult
+//
+//    Return:
+//      Napi::Value:
+//        Undefined (results returned in callback)
+//
+Napi::Value ODBCConnection::PrimaryKeys(const Napi::CallbackInfo& info) {
+
+  Napi::Env env = info.Env();
+  Napi::HandleScope scope(env);
+
+  if (info.Length() != 4) {
+    Napi::TypeError::New(env, "primaryKeys() function takes 4 arguments.").ThrowAsJavaScriptException();
+  }
+
+  Napi::Function callback;
+  StatementData* data = new (std::nothrow) StatementData();
+  // Napi doesn't have LowMemoryNotification like NAN did. Throw standard error.
+  if (!data) {
+    Napi::TypeError::New(env, "Could not allocate enough memory to run query.").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  
+  data->henv                = this->hENV;
+  data->hdbc                = this->hDBC;
+  data->fetch_array         = this->connectionOptions.fetchArray;
+  data->maxColumnNameLength = this->getInfoResults.max_column_name_length;
+  data->get_data_supports   = this->getInfoResults.sql_get_data_supports;
+
+  if (info[0].IsString()) {
+    data->catalog = ODBC::NapiStringToSQLTCHAR(info[0].ToString());
+  } else if (!info[0].IsNull()) {
+    Napi::TypeError::New(env, "primaryKeys: first argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[1].IsString()) {
+    data->schema = ODBC::NapiStringToSQLTCHAR(info[1].ToString());
+  } else if (!info[1].IsNull()) {
+    Napi::TypeError::New(env, "primaryKeys: second argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[2].IsString()) {
+    data->table = ODBC::NapiStringToSQLTCHAR(info[2].ToString());
+  } else if (!info[2].IsNull()) {
+    Napi::TypeError::New(env, "primaryKeys: third argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[3].IsFunction()) { callback = info[3].As<Napi::Function>(); }
+  else {
+    Napi::TypeError::New(env, "primaryKeys: fourth argument must be a function").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  PrimaryKeysAsyncWorker *worker = new PrimaryKeysAsyncWorker(this, data, callback);
+  worker->Queue();
+
+  return env.Undefined();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//  ForeignKeys
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// ForeignKeysAsyncWorker, used by the ForeignKeys function below
+class ForeignKeysAsyncWorker : public ODBCAsyncWorker
+{
+    private:
+
+    ODBCConnection *odbcConnectionObject;
+    StatementData  *data;
+
+    void Execute() {
+
+      SQLRETURN return_code;
+
+      uv_mutex_lock(&ODBC::g_odbcMutex);
+      return_code = SQLAllocHandle(
+        SQL_HANDLE_STMT,            // HandleType
+        odbcConnectionObject->hDBC, // InputHandle
+        &data->hstmt                // OutputHandlePtr
+      );
+      uv_mutex_unlock(&ODBC::g_odbcMutex);
+      if (!SQL_SUCCEEDED(return_code)) {
+        this->errors = GetODBCErrors(SQL_HANDLE_DBC, odbcConnectionObject->hDBC);
+        SetError("[odbc] Error allocating a statement handle to get foriegn key information\0");
+        return;
+      }
+
+      return_code =
+      set_fetch_size
+      (
+        data,
+        1
+      );
+
+      return_code =
+      SQLForeignKeys
+      (
+        data->hstmt,     // StatementHandle
+        data->catalog,   // PKCatalogName
+        SQL_NTS,         // NameLength1
+        data->schema,    // PKSchemaName
+        SQL_NTS,         // NameLength2
+        data->table,     // PKTableName
+        SQL_NTS,         // NameLength3 
+        data->fkCatalog, // FKCatalogName
+        SQL_NTS,         // NameLength4,  
+        data->fkSchema,   // FKSchemaName
+        SQL_NTS,         // NameLength5,  
+        data->fkTable,   // FKTableName,  
+        SQL_NTS          // NameLength6
+      );
+      if (!SQL_SUCCEEDED(return_code)) {
+        this->errors = GetODBCErrors(SQL_HANDLE_STMT, data->hstmt);
+        SetError("[odbc] Error getting table information\0");
+        return;
+      }
+
+      return_code = prepare_for_fetch(data);
+      bool alloc_error = false;
+      return_code =
+      fetch_all_and_store
+      (
+        data,
+        false,
+        &alloc_error
+      );
+      if (alloc_error)
+      {
+        SetError("[odbc] Error allocating or reallocating memory when fetching data. No ODBC error information available.\0");
+        return;
+      }
+      if (!SQL_SUCCEEDED(return_code)) {
+        this->errors = GetODBCErrors(SQL_HANDLE_STMT, data->hstmt);
+        SetError("[odbc] Error retrieving table information results set\0");
+        return;
+      }
+    }
+
+    void OnOK() {
+
+      Napi::Env env = Env();
+      Napi::HandleScope scope(env);
+
+      std::vector<napi_value> callbackArguments;
+
+      callbackArguments.push_back(env.Null());
+
+      Napi::Array empty = Napi::Array::New(env);
+      Napi::Array rows = process_data_for_napi(env, data, empty);
+      callbackArguments.push_back(rows);
+
+      Callback().Call(callbackArguments);
+    }
+
+  public:
+
+    ForeignKeysAsyncWorker(ODBCConnection *odbcConnectionObject, StatementData *data, Napi::Function& callback) : ODBCAsyncWorker(callback),
+      odbcConnectionObject(odbcConnectionObject),
+      data(data) {}
+
+    ~ForeignKeysAsyncWorker() {
+      delete data;
+      data = NULL;
+    }
+};
+
+//
+//  ODBCConnection::ForeignKeys
+//
+//    Description: Returns either a list of foreign keys in the specified able,
+//    or foriegn keys in other tables that refer to the primary key in the
+//    specified table.
+//
+//    Parameters:
+//      const Napi::CallbackInfo& info:
+//        The information passed from the JavaSript environment, including the
+//        function arguments for 'tables'.
+//
+//        info[0]: String: primaryKeyCatalog
+//        info[1]: String: primaryKeySchema
+//        info[2]: String: primaryKeyTable
+//        info[3]: String: foreignKeyCatalog
+//        info[4]: String: foreignKeySchema
+//        info[5]: String: foreignKeyTable
+//        info[6]: Function: callback function:
+//            function(error, result)
+//              error: An error object if there was a database issue
+//              result: The ODBCResult
+//
+//    Return:
+//      Napi::Value:
+//        Undefined (results returned in callback)
+//
+Napi::Value ODBCConnection::ForeignKeys(const Napi::CallbackInfo& info) {
+
+  Napi::Env env = info.Env();
+  Napi::HandleScope scope(env);
+
+  if (info.Length() != 7) {
+    Napi::TypeError::New(env, "foriegnKeys() function takes 7 arguments.").ThrowAsJavaScriptException();
+  }
+
+  Napi::Function callback;
+  StatementData* data = new (std::nothrow) StatementData();
+
+  // Napi doesn't have LowMemoryNotification like NAN did. Throw standard error.
+  if (!data) {
+    Napi::TypeError::New(env, "Could not allocate enough memory to run query.").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  data->henv                = this->hENV;
+  data->hdbc                = this->hDBC;
+  data->fetch_array         = this->connectionOptions.fetchArray;
+  data->maxColumnNameLength = this->getInfoResults.max_column_name_length;
+  data->get_data_supports   = this->getInfoResults.sql_get_data_supports;
+
+  if (info[0].IsString()) {
+    data->catalog = ODBC::NapiStringToSQLTCHAR(info[0].ToString());
+  } else if (!info[0].IsNull()) {
+    Napi::TypeError::New(env, "foriegnKeys: first argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[1].IsString()) {
+    data->schema = ODBC::NapiStringToSQLTCHAR(info[1].ToString());
+  } else if (!info[1].IsNull()) {
+    Napi::TypeError::New(env, "foriegnKeys: second argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[2].IsString()) {
+    data->table = ODBC::NapiStringToSQLTCHAR(info[2].ToString());
+  } else if (!info[2].IsNull()) {
+    Napi::TypeError::New(env, "foriegnKeys: third argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[3].IsString()) {
+    data->fkCatalog = ODBC::NapiStringToSQLTCHAR(info[3].ToString());
+  } else if (!info[3].IsNull()) {
+    Napi::TypeError::New(env, "foriegnKeys: fourth argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[4].IsString()) {
+    data->fkSchema = ODBC::NapiStringToSQLTCHAR(info[4].ToString());
+  } else if (!info[4].IsNull()) {
+    Napi::TypeError::New(env, "foriegnKeys: fifth argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[5].IsString()) {
+    data->fkTable = ODBC::NapiStringToSQLTCHAR(info[5].ToString());
+  } else if (!info[5].IsNull()) {
+    Napi::TypeError::New(env, "foriegnKeys: sixth argument must be a string or null").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  if (info[6].IsFunction()) { callback = info[6].As<Napi::Function>(); }
+  else {
+    Napi::TypeError::New(env, "foriegnKeys: seventh argument must be a function").ThrowAsJavaScriptException();
+    delete data;
+    return env.Null();
+  }
+
+  ForeignKeysAsyncWorker *worker = new ForeignKeysAsyncWorker(this, data, callback);
+  worker->Queue();
+
+  return env.Undefined();
+}
+
 /******************************************************************************
  ********************************** TABLES ************************************
  *****************************************************************************/
@@ -2255,7 +2656,7 @@ Napi::Value ODBCConnection::Tables(const Napi::CallbackInfo& info) {
   if (info[1].IsString()) {
     data->schema = ODBC::NapiStringToSQLTCHAR(info[1].ToString());
   } else if (!info[1].IsNull()) {
-    Napi::TypeError::New(env, "tables: first argument must be a string or null").ThrowAsJavaScriptException();
+    Napi::TypeError::New(env, "tables: second argument must be a string or null").ThrowAsJavaScriptException();
     delete data;
     data = NULL;
     return env.Null();
@@ -2264,7 +2665,7 @@ Napi::Value ODBCConnection::Tables(const Napi::CallbackInfo& info) {
   if (info[2].IsString()) {
     data->table = ODBC::NapiStringToSQLTCHAR(info[2].ToString());
   } else if (!info[2].IsNull()) {
-    Napi::TypeError::New(env, "tables: first argument must be a string or null").ThrowAsJavaScriptException();
+    Napi::TypeError::New(env, "tables: third argument must be a string or null").ThrowAsJavaScriptException();
     delete data;
     data = NULL;
     return env.Null();
@@ -2273,7 +2674,7 @@ Napi::Value ODBCConnection::Tables(const Napi::CallbackInfo& info) {
   if (info[3].IsString()) {
     data->type = ODBC::NapiStringToSQLTCHAR(info[3].ToString());
   } else if (!info[3].IsNull()) {
-    Napi::TypeError::New(env, "tables: first argument must be a string or null").ThrowAsJavaScriptException();
+    Napi::TypeError::New(env, "tables: fourth argument must be a string or null").ThrowAsJavaScriptException();
     delete data;
     data = NULL;
     return env.Null();
@@ -3045,8 +3446,14 @@ bind_buffers
       case SQL_BINARY:
       case SQL_VARBINARY:
       {
-        column->buffer_size = column->ColumnSize;
         column->bind_type = SQL_C_BINARY;
+        // Fixes a known issue with SQL Server and (max) length fields
+        if (column->ColumnSize == 0)
+        {
+          column->is_long_data = true;
+          break;
+        }
+        column->buffer_size = column->ColumnSize;
         data->bound_columns[i].buffer =
           new SQLCHAR[column->buffer_size * data->fetch_size]();
         break;
@@ -3055,10 +3462,15 @@ bind_buffers
       case SQL_WCHAR:
       case SQL_WVARCHAR:
       {
-
+        column->bind_type = SQL_C_WCHAR;
+        // Fixes a known issue with SQL Server and (max) length fields
+        if (column->ColumnSize == 0)
+        {
+          column->is_long_data = true;
+          break;
+        }
         size_t character_count = column->ColumnSize + 1;
         column->buffer_size = character_count * sizeof(SQLWCHAR);
-        column->bind_type = SQL_C_WCHAR;
         data->bound_columns[i].buffer =
           new SQLWCHAR[character_count * data->fetch_size]();
         break;
@@ -3068,9 +3480,15 @@ bind_buffers
       case SQL_VARCHAR:
       default:
       {
+        column->bind_type = SQL_C_CHAR;
+        // Fixes a known issue with SQL Server and (max) length fields
+        if (column->ColumnSize == 0)
+        {
+          column->is_long_data = true;
+          break;
+        }
         size_t character_count = column->ColumnSize * MAX_UTF8_BYTES + 1;
         column->buffer_size = character_count * sizeof(SQLCHAR);
-        column->bind_type = SQL_C_CHAR;
         data->bound_columns[i].buffer =
           new SQLCHAR[character_count * data->fetch_size]();
         break;
@@ -3161,6 +3579,8 @@ fetch_and_store
           // Iterate over each column, putting the data in the row object
           for (int column_index = 0; column_index < data->column_count; column_index++)
           {
+            row[column_index].bind_type = data->columns[column_index]->bind_type;
+
             // The column contained SQL_(W)LONG* data, so we didn't call
             // SQLBindCol, and therefore there is no data to move from a buffer.
             // Instead, call SQLGetData, and adjust buffer size accordingly
@@ -3171,6 +3591,10 @@ fetch_and_store
                            data->query_options.initial_long_data_buffer_size;
               SQLLEN     string_length_or_indicator;
               SQLLEN     data_returned_length = 0;
+
+              // We're allocating with malloc/realloc here, so the destructor
+              // needs to use free instead of delete[].
+              row[column_index].use_free = true;
 
               if (data->columns[column_index]->bind_type == SQL_C_WCHAR)
               {
@@ -3574,6 +3998,61 @@ fetch_all_and_store
   return return_code;
 }
 
+// This macro and function are used to translate the various ODBC data type
+// macros, returning a string that matches the name of the macro in the ODBC
+// header files. This is then used when returning column data to the user. If
+// the user desires the native (non-ODBC) data type, they should call the
+// columns() function available on the Connection object.
+#define CASE_RETURN_DATA_TYPE_NAME(n) case n: return #n
+
+const char*
+get_odbc_type_name
+(
+  SQLSMALLINT dataType
+)
+{
+  switch(dataType) {
+    CASE_RETURN_DATA_TYPE_NAME(SQL_CHAR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_VARCHAR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_LONGVARCHAR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_WCHAR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_WVARCHAR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_WLONGVARCHAR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_DECIMAL);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_NUMERIC);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_SMALLINT);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTEGER);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_REAL);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_FLOAT);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_DOUBLE);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_BIT);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_TINYINT);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_BIGINT);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_BINARY);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_VARBINARY);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_LONGVARBINARY);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_TYPE_DATE);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_TYPE_TIME);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_TYPE_TIMESTAMP);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_MONTH);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_YEAR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_YEAR_TO_MONTH);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_DAY);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_HOUR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_MINUTE);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_SECOND);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_DAY_TO_HOUR);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_DAY_TO_MINUTE);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_DAY_TO_SECOND);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_HOUR_TO_MINUTE);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_HOUR_TO_SECOND);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_INTERVAL_MINUTE_TO_SECOND);
+    CASE_RETURN_DATA_TYPE_NAME(SQL_GUID);
+
+    default: return "UNKNOWN";
+  }
+}
+
 // All of data has been loaded into data->storedRows. Have to take the data
 // stored in there and convert it it into JavaScript to be given to the
 // Node.js runtime.
@@ -3643,6 +4122,7 @@ Napi::Array process_data_for_napi(Napi::Env env, StatementData *data, Napi::Arra
     column.Set(Napi::String::New(env, NAME), Napi::String::New(env, (const char*)columns[h]->ColumnName));
     #endif
     column.Set(Napi::String::New(env, DATA_TYPE), Napi::Number::New(env, columns[h]->DataType));
+    column.Set(Napi::String::New(env, DATA_TYPE_NAME), Napi::String::New(env, get_odbc_type_name(columns[h]->DataType)));
     column.Set(Napi::String::New(env, COLUMN_SIZE), Napi::Number::New(env, columns[h]->ColumnSize));
     column.Set(Napi::String::New(env, DECIMAL_DIGITS), Napi::Number::New(env, columns[h]->DecimalDigits));
     column.Set(Napi::String::New(env, NULLABLE), Napi::Boolean::New(env, columns[h]->Nullable));

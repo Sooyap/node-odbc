@@ -1,6 +1,25 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.4.7] - 2023-01-26
+### Fixed
+- Fixed static cursor declaration causeing performance degredatio
+- Fixed a memory leak with certain long binary and character types
+
+## [2.4.6] - 2022-09-22
+### Fixed
+- Fixed TypeScript definition error preventing compilation
+
+## [2.4.5] - 2022-09-12
+### Added
+- `primaryKeys` instance function on `Connection` to call ODBC SQLPrimaryKeys function
+- `foreignKeys` instance function on `Connection` to call ODBC SQLForeignKeys function
+- Binaries added for all supported N-API versions for all GitHub Actions runners 
+
+### Fixed
+- Fixed VARCHAR(MAX) fields creating 0-sized buffers (MSSQL)
+- Fixed various TypeScript type definitions
+
 ## [2.4.4] - 2022-04-26
 ### Fixed
 - Fixed application crashing when `callProcedure` was given the wrong procedure name or number of parameters
